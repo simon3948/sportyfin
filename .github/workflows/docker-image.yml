@@ -1,7 +1,18 @@
-FROM python:3.8-slim-buster
+name: Docker Image CI
 
-WORKDIR /sportyfin
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
-RUN pip install sportyfin==1.0.7 --no-binary=sportyfin
+jobs:
 
-CMD [ "python3", "-m" , "sportyfin", "run", "-a", "-o", "/sportyfin/output"]
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
