@@ -32,9 +32,9 @@ def header():
     print(f"{colours.OKGREEN}             live streamed events and watch straight from Jellyfin. Sportyfin also generates meta-data that ")
     print(f"{colours.OKGREEN}             is used in Jellyfin to provide a great viewing experience.")
     print()
-    print(f"{colours.OKGREEN}    Author: Axel Mierczuk")
-    print(f"{colours.OKGREEN}    Version: 1.0.7")
-    print(f"{colours.OKGREEN}    Github: https://github.com/axelmierczuk/sportyfin")
+    print(f"{colours.OKGREEN}    Author: Simon")
+    print(f"{colours.OKGREEN}    Version: 1.0.8")
+    print(f"{colours.OKGREEN}    Github: https://github.com/simon3948/sportyfin")
     print()
     print()
 
