@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='sportyfin',
-    version='1.0.7',
+    version='1.0.8',
     author='Simon',
     packages=['sportyfin', 'sportyfin.util'],
     include_package_data=True,
