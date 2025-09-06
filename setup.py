@@ -3,8 +3,7 @@ from setuptools import setup
 setup(
     name='sportyfin',
     version='1.0.7',
-    author='Axel Mierczuk',
-    author_email='axelmierczuk@gmail.com',
+    author='Simon',
     packages=['sportyfin', 'sportyfin.util'],
     include_package_data=True,
     url='http://pypi.python.org/pypi/sportyfin/',
