@@ -102,7 +102,7 @@ class StreamCollector:
             p(f"Generating m3u playlist data for {lg.upper()}", colours.HEADER, otype.REGULAR)
             self.generate_m3u(lg)
 
-
+#todo make link configurable
 def run(argv: list):
     global OUTPUT
     minutes = 30
