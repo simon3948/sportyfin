@@ -107,7 +107,7 @@ def run(argv: list):
     global OUTPUT
     minutes = 30
     try:
-        os.environ['stream_link'] = "https://sportscentral.io"
+        os.environ['stream_link'] = "https://sportsurge.bz"
         if "-v" in argv:
             os.environ["verbosity"] = "0"
         else:
