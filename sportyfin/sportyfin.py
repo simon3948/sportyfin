@@ -49,14 +49,14 @@ def header():
 class StreamCollector:
     def __init__(self):
         self.streaming_sites = {
-            FOOTBALL: scraping.find_streams(FOOTBALL) if FOOTBALL in leagues else [],
-            F1: scraping.find_streams(F1) if F1 in leagues else [],
-            NFL: scraping.find_streams(NFL) if NFL in leagues else [],
-            NBA: scraping.find_streams(NBA) if NBA in leagues else [],
-            NHL: scraping.find_streams(NHL) if NHL in leagues else [],
-            UFC: scraping.find_streams(UFC) if UFC in leagues else [],
-            BOXING: scraping.find_streams(BOXING) if BOXING in leagues else [],
-            RUGBY: scraping.find_streams(RUGBY) if RUGBY in leagues else [],
+            FOOTBALL: scraping.find_website_links(FOOTBALL) if FOOTBALL in leagues else [],
+            F1: scraping.find_website_links(F1) if F1 in leagues else [],
+            NFL: scraping.find_website_links(NFL) if NFL in leagues else [],
+            NBA: scraping.find_website_links(NBA) if NBA in leagues else [],
+            NHL: scraping.find_website_links(NHL) if NHL in leagues else [],
+            UFC: scraping.find_website_links(UFC) if UFC in leagues else [],
+            BOXING: scraping.find_website_links(BOXING) if BOXING in leagues else [],
+            RUGBY: scraping.find_website_links(RUGBY) if RUGBY in leagues else [],
         }
         self.leagues: list = leagues
 
@@ -67,9 +67,12 @@ class StreamCollector:
             res = 0
             for event in self.streaming_sites[lg]:
                 # Use direct keys from event dictionary
-                p(f"Looking for {event.get('name', event.get('url', 'Unknown'))} streams:", colours.WARNING, otype.REGULAR)
-                event['m3u8_urls'] = scraping.get_streams(event['stream_links'])
+                p(f"Looking for {event.get('name', event.get('url'))} streams:", colours.WARNING, otype.REGULAR)
+                print(f"stream_links: ", event['stream_links'])
+                event['m3u8_urls'] = scraping.find_urls(scraping.bypass_bitly((event['stream_links'])))
+                print(f"m3u8_urls: ", event['m3u8_urls'])
                 res += len(event['m3u8_urls'])
+                p(f"EVENT: {event.get('name', event.get('url'))} FOUND M3U8_URLS: {', '.join(event['m3u8_urls'])}", colours.HEADER, otype.REGULAR)
             if res == 0:
                 p(f"COULD NOT FIND {lg.upper()} M3U8 LINKS", colours.FAIL, otype.REGULAR)
 

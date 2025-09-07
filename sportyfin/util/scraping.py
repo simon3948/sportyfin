@@ -5,13 +5,13 @@ import json
 import sys
 from . import event_info
 from .pretty_print import *
-import chromedriver_binary
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from dotenv import load_dotenv
 import os
 import requests
 from bs4 import BeautifulSoup
+import traceback
 
 load_dotenv()
 
@@ -58,43 +58,67 @@ def selenium_find(link: str) -> list:
     """
     pind(f"Trying to find m3u8 in network traffic - {link}", colours.OKCYAN, otype.DEBUG)
     res = []
+    driver = None
     try:
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--headless=new')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        # Use system Chromium inside container; allow override via CHROME_BIN
+        chrome_options.binary_location = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
+        # Enable performance logging and network events
+        chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+        chrome_options.add_experimental_option('perfLoggingPrefs', {
+            'enableNetwork': True,
+            'enablePage': False
+        })
+        driver = webdriver.Chrome(options=chrome_options)
+        # Explicitly enable Network domain to ensure events are captured
         try:
+            driver.execute_cdp_cmd('Network.enable', {})
+        except Exception:
+            pass
+    except Exception as e:
+        traceback.print_exc()
+        p("Could not start Selenium Chrome driver", colours.FAIL, otype.ERROR, e)
+        return res  # Return early if driver creation fails
 
-            caps = DesiredCapabilities.CHROME
-            caps['goog:loggingPrefs'] = {'performance': 'ALL'}
-            chrome_options = webdriver.ChromeOptions()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            driver = webdriver.Chrome(desired_capabilities=caps, options=chrome_options)
-        except Exception as e:
-            print(e.with_traceback())
+    try:
         driver.get(link)
-        time.sleep(1)  # wait for all the data to arrive.
+        time.sleep(10)  # wait for network activity
         perf = driver.get_log('performance')
-        for j in perf:
+        for entry in perf:
             try:
-                if "m3u8" in json.dumps(j):
-                    obj = flatten_json(json.loads(j["message"]))
-                    list_of_dict_values = list(obj.values())
-                    for value in list_of_dict_values:
-                        if str(value).find("m3u8") > -1 and str(value) not in res:
-                            if int(requests.get(value, allow_redirects=True).status_code) == 200:
-                                pind2(f"Found a stream - {str(value)}", colours.OKGREEN, otype.REGULAR)
-                            res.append(value)
+                message = json.loads(entry.get('message', '{}')).get('message', {})
+                method = message.get('method', '')
+                params = message.get('params', {})
+                url = None
+                if method == 'Network.responseReceived':
+                    url = params.get('response', {}).get('url')
+                elif method == 'Network.requestWillBeSent':
+                    url = params.get('request', {}).get('url')
+                if url and '.m3u8' in url and url not in res:
+                    try:
+                        if int(requests.get(url, allow_redirects=True).status_code) == 200:
+                            pind2(f"Found a stream - {url}", colours.OKGREEN, otype.REGULAR)
+                        res.append(url)
+                    except Exception:
+                        # Even if GET fails, keep the candidate URL
+                        res.append(url)
             except KeyboardInterrupt:
                 sys.exit()
-                pass
             except Exception as e:
-                p("Something went wrong pulling a m3u8 link", colours.FAIL, otype.ERROR, e)
+                p("Something went wrong parsing performance logs", colours.FAIL, otype.ERROR, e)
                 continue
     except KeyboardInterrupt:
         sys.exit()
         pass
     except Exception as e:
-        print(e.with_traceback())
+        traceback.print_exc()
         p("Something went wrong with Selenium", colours.FAIL, otype.ERROR, e)
+    finally:
+        if driver:
+            driver.quit()
     return list(dict.fromkeys(res))
 
 
@@ -106,7 +130,7 @@ def html_find(link: str) -> list:
     res = []
     try:
         content = requests.get(link).text
-        for match in regex.findall(r"([\'][^\'\"]+(\.m3u8)[^\'\"]*[\'])|([\"][^\'\"]+(\.m3u8)[^\'\"]*[\"])", content):
+        for match in regex.findall(r"([\'][^\'\"]+(\.m3u8)[^\'\"]*[\'])|(https?:\/\/[^\s'\"<>]+\.m3u8(?:[^\s'\"<>]*)?)|([\"][^\'\"]+(\.m3u8)[^\'\"]*[\"])", content):
             for i in match:
                 if (i.count("\'") == 2 and i.count("\"") == 0) or (i.count("\"") == 2 and i.count("\'") == 0) and ".m3u8" in i and i[1:-1] not in res:
                     if int(requests.get(i[1:-1], allow_redirects=True).status_code) == 200:
@@ -119,22 +143,26 @@ def html_find(link: str) -> list:
 
 def find_urls(ll: list) -> list:
     """
-    Helper function used to scrape html and network traffic from a provided link.
+    Scrapes .m3u8 links from a list of URLs using Selenium and HTML parsing.
     """
     res = []
-    if len(ll) == 0:
+    if not ll:
         return res
     try:
         for link in ll:
-            if os.environ.get('selenium') == "0":
+            # Use Selenium first unless explicitly disabled
+            if os.environ.get('selenium', '1') != "0":
+                p(f"SEARCHING NETWORK TRAFFIC FOR LINK" + link, colours.HEADER, otype.REGULAR)
                 res.extend(x for x in selenium_find(link) if x not in res)
+            # Fallback to simple HTML parsing
+            p(f"SEARCHING HTML FOR LINK" + link, colours.HEADER, otype.REGULAR)
             res.extend(x for x in html_find(link) if x not in res)
     except KeyboardInterrupt:
         sys.exit()
-        pass
     except Exception as e:
+        p(f"Exception in find_urls: {e}", colours.FAIL, otype.ERROR)
         return list(dict.fromkeys(res))
-    if len(res) == 0:
+    if not res:
         p(f"Did not find streams", colours.FAIL, otype.DEBUG)
     return list(dict.fromkeys(res))
 
@@ -142,25 +170,30 @@ def find_urls(ll: list) -> list:
 def bypass_bitly(ll: list) -> list:
     """
     Ability to bypass bitly pages to get streaming site url.
+    Only processes Bitly links; other links are returned unchanged.
     """
     res = []
     for link in ll:
-        # Only process Bitly links
         if "bit.ly" in link:
             try:
-                parsed_html = BeautifulSoup(requests.request("GET", link).text, features="lxml")
-                url = parsed_html.body.find('a', attrs={'id': 'skip-btn'}).get('href')
+                response = requests.get(link)
+                parsed_html = BeautifulSoup(response.text, features="lxml")
+                skip_btn = parsed_html.body.find('a', attrs={'id': 'skip-btn'})
+                url = skip_btn.get('href') if skip_btn else None
                 if url:
                     res.append(url)
+                else:
+                    p(f"Could not find skip button on Bitly page - {link}", colours.FAIL, otype.ERROR)
             except Exception as e:
                 p(f"Error occurred bypassing bitly - {link}", colours.FAIL, otype.ERROR)
         else:
             # Not a Bitly link, just append as-is
             res.append(link)
+    # Remove duplicates
     return list(dict.fromkeys(res))
 
 
-def pull_bitly_link(link) -> list:
+def pull_links(link) -> list:
     """
     Pull stream links from the event page table.
     """
@@ -231,7 +264,7 @@ def make_match(api_res, hosts, lg) -> list:
     return event
 
 
-def find_streams(lg: str) -> list:
+def find_website_links(lg: str) -> list:
     """
     Finds current events that are active for a given league.
     """
@@ -262,15 +295,17 @@ def find_streams(lg: str) -> list:
         events = scrape_events(main_link)
 
     for event in events:
-        event['stream_links'] = pull_bitly_link(event['url'])
+        event['stream_links'] = pull_links(event['url'])
         if event['stream_links'] and event not in res:
             res.append(event)
     if len(res) == 0:
         p(f"COULD NOT FIND ACTIVE {lg.upper()} STREAM LINKS", colours.FAIL, otype.ERROR)
+        p(" ")
     return res
 
 
 def get_streams(s: list) -> list:
+    print(f"get_streams received: {s}")
     return find_urls(bypass_bitly(s))
 
 

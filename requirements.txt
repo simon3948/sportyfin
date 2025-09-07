@@ -6,7 +6,6 @@ bs4==0.0.1
 certifi==2021.10.8
 cffi==1.15.0
 charset-normalizer==2.0.10
-chromedriver-binary==97.0.4692.71.0
 click==8.0.3
 colorama==0.4.4
 cryptography==36.0.1
@@ -41,7 +40,7 @@ requests-toolbelt==0.9.1
 rfc3986==1.5.0
 ruamel.yaml==0.17.20
 ruamel.yaml.clib==0.2.6
-selenium==4.1.0
+selenium==4.12.0
 six==1.16.0
 sniffio==1.2.0
 sortedcontainers==2.4.0
