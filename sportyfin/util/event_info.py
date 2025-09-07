@@ -8,11 +8,14 @@ from dotenv import load_dotenv
 import requests
 load_dotenv()
 
+FOOTBALL = "football"
+F1 = "f1"
+NFL = "nfl"
 NBA = "nba"
 NHL = "nhl"
-NFL = "nfl"
-EF = "English Football"
-
+UFC = "ufc"
+BOXING = "boxing"
+RUGBY = "rugby"
 
 def download_jpg(lp: list) -> list:
     res = []

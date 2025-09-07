@@ -1,16 +1,17 @@
 import time
-import requests as r
-import regex as re
+import regex
 import datetime
 import json
 import sys
-from . import game_info
+from . import event_info
 from .pretty_print import *
 import chromedriver_binary
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from dotenv import load_dotenv
 import os
+import requests
+from bs4 import BeautifulSoup
 
 load_dotenv()
 
@@ -19,10 +20,14 @@ try:
 except ImportError:
     from bs4 import BeautifulSoup
 
+FOOTBALL = "football"
+F1 = "f1"
+NFL = "nfl"
 NBA = "nba"
 NHL = "nhl"
-NFL = "nfl"
-EF = "English Football"
+UFC = "ufc"
+BOXING = "boxing"
+RUGBY = "rugby"
 
 
 def flatten_json(y: dict) -> dict:
@@ -75,7 +80,7 @@ def selenium_find(link: str) -> list:
                     list_of_dict_values = list(obj.values())
                     for value in list_of_dict_values:
                         if str(value).find("m3u8") > -1 and str(value) not in res:
-                            if int(r.get(value, allow_redirects=True).status_code) == 200:
+                            if int(requests.get(value, allow_redirects=True).status_code) == 200:
                                 pind2(f"Found a stream - {str(value)}", colours.OKGREEN, otype.REGULAR)
                             res.append(value)
             except KeyboardInterrupt:
@@ -100,11 +105,11 @@ def html_find(link: str) -> list:
     pind(f"Trying to find m3u8 in page content - {link}", colours.OKCYAN, otype.DEBUG)
     res = []
     try:
-        content = r.get(link).text
-        for match in re.findall(r"([\'][^\'\"]+(\.m3u8)[^\'\"]*[\'])|([\"][^\'\"]+(\.m3u8)[^\'\"]*[\"])", content):
+        content = requests.get(link).text
+        for match in regex.findall(r"([\'][^\'\"]+(\.m3u8)[^\'\"]*[\'])|([\"][^\'\"]+(\.m3u8)[^\'\"]*[\"])", content):
             for i in match:
                 if (i.count("\'") == 2 and i.count("\"") == 0) or (i.count("\"") == 2 and i.count("\'") == 0) and ".m3u8" in i and i[1:-1] not in res:
-                    if int(r.get(i[1:-1], allow_redirects=True).status_code) == 200:
+                    if int(requests.get(i[1:-1], allow_redirects=True).status_code) == 200:
                         res.append(i[1:-1])
                         pind2(f"Found a stream - {str(i[1:-1])}", colours.OKGREEN, otype.REGULAR)
     except Exception as e:
@@ -140,41 +145,43 @@ def bypass_bitly(ll: list) -> list:
     """
     res = []
     for link in ll:
-        parsed_html = BeautifulSoup(r.request("GET", link).text, features="lxml")
-        try:
-            url = parsed_html.body.find('a', attrs={'id': 'skip-btn'}).get('href')
-            if url:
-                res.append(url)
-        except KeyboardInterrupt:
-            sys.exit()
-            pass
-        except Exception as e:
-            p(f"Error occurred bypassing bitly - {link}", colours.FAIL, otype.ERROR)
-            pass
+        # Only process Bitly links
+        if "bit.ly" in link:
+            try:
+                parsed_html = BeautifulSoup(requests.request("GET", link).text, features="lxml")
+                url = parsed_html.body.find('a', attrs={'id': 'skip-btn'}).get('href')
+                if url:
+                    res.append(url)
+            except Exception as e:
+                p(f"Error occurred bypassing bitly - {link}", colours.FAIL, otype.ERROR)
+        else:
+            # Not a Bitly link, just append as-is
+            res.append(link)
     return list(dict.fromkeys(res))
 
 
 def pull_bitly_link(link) -> list:
     """
-    Pull bitly link from main streaming site.
+    Pull stream links from the event page table.
     """
-    parsed_html_next = BeautifulSoup(r.request("GET", link).text, features="lxml")
     res = []
-    try:
-        for tag in parsed_html_next.body.find_all('tr'):
-            if tag.get('data-stream-link'):
-                res.append(tag.get('data-stream-link'))
-    except KeyboardInterrupt:
-        sys.exit()
-        pass
-    except Exception as e:
-        p(f"Error getting stream link from {link}", colours.FAIL, otype.DEBUG)
-        return res
+    parsed_html = BeautifulSoup(requests.get(link).text, "html.parser")
+    # Find all <tr> rows
+    for tr in parsed_html.find_all('tr'):
+        # Find all <a> tags inside the row
+        for a_tag in tr.find_all('a', href=True):
+            href = a_tag['href']
+            # Optionally, filter for links containing 'watch' or 'view'
+            if "watch" in href or "view" in href or "totview" in href:
+                if "https://hdplayerr.xyz/totview.php?src=" in href:
+                    href = href.replace("https://hdplayerr.xyz/totview.php?src=", "")
+                res.append(href)
+                p(f"STREAM LINKS FOR EVENT: {href}", colours.HEADER, otype.REGULAR)
     return res
 
 
 def make_match(api_res, hosts, lg) -> list:
-    games = []
+    events = []
     for g in api_res:
         ht = g['homeTeam']
         at = g['awayTeam']
@@ -216,53 +223,78 @@ def make_match(api_res, hosts, lg) -> list:
             pass
         if match['match']['name'] == '':
             match['match']['name'] = f"{match['away_team']['name']} vs {match['home_team']['name']}"
-        match['match']['img_location'] = game_info.generate_img(match, lg)
+        match['match']['img_location'] = event_info.generate_img(match, lg)
         p(f"Found - {match['match']['name']}", colours.OKGREEN, otype.REGULAR)
         pind2(f"URL - {match['match']['url']}", colours.OKCYAN, otype.DEBUG)
         pind2(f"ICON - {match['match']['img_location']}", colours.OKCYAN, otype.DEBUG)
-        games.append(match)
-    return games
+        events.append(event)
+    return event
 
 
 def find_streams(lg: str) -> list:
     """
-    Finds current games that are active for a given league.
+    Finds current events that are active for a given league.
     """
     STREAM_LINK = os.environ.get('stream_link')
     p(f"COLLECTING {lg.upper()} STREAMING LINKS", colours.HEADER, otype.REGULAR)
     res = []
-    games = []
-    date = datetime.datetime.today().strftime('%Y-%m-%d')
-    hosts = [f"{STREAM_LINK}/streams-table/"]
     path = None
-    if lg == NHL:
-        path = "nhl-tournaments"
-        hosts.append("/ice-hockey?new-ui=1&origin=live.redditnhlstreams.com")
+    if lg == FOOTBALL:
+        path = "football"
+    elif lg == F1:
+        path = "f1"
     elif lg == NFL:
-        path = "nfl-tournaments-week"
-        hosts.append("/american-football?new-ui=1&origin=official.nflstreams.to")
+        path = "nfl"
     elif lg == NBA:
-        path = "nba-tournaments"
-        hosts.append("/basketball?new-ui=1&origin=reddit.rnbastreams.com")
-    elif lg == EF:
-        hosts.append("/soccer?new-ui=1&origin=redi1.soccerstreams.net")
-        api_res = json.loads(r.get(f"{STREAM_LINK}/new-api/matches?timeZone=300&date={date}").content)
-        for i in api_res:
-            games.extend(make_match(i['events'], hosts, lg))
+        path = "nba"
+    elif lg == NHL:
+        path = "nhl"
+    elif lg == UFC:
+        path = "ufc"
+    elif lg == BOXING:
+        path = "boxing"
+    elif lg == RUGBY:
+        path = "rugby"
 
     if path:
-        main_link = f"{STREAM_LINK}/api/{path}?date={date}"
-        api_res = json.loads(r.request("GET", main_link).content)[0]['events']
-        games = make_match(api_res, hosts, lg)
+        main_link = f"{STREAM_LINK}/{path}"
+        p(f"USING LINK: " + main_link, colours.HEADER, otype.REGULAR)
+        events = scrape_events(main_link)
 
-    for match in games:
-        match['match']['url'] = pull_bitly_link(match['match']['url'])
-        if not (len(match['match']['url']) == 0 or match in res) :
-            res.append(match)
+    for event in events:
+        event['stream_links'] = pull_bitly_link(event['url'])
+        if event['stream_links'] and event not in res:
+            res.append(event)
     if len(res) == 0:
-        p(f"COULD NOT FIND {lg.upper()} GAMES", colours.FAIL, otype.ERROR)
+        p(f"COULD NOT FIND ACTIVE {lg.upper()} STREAM LINKS", colours.FAIL, otype.ERROR)
     return res
 
 
 def get_streams(s: list) -> list:
     return find_urls(bypass_bitly(s))
+
+
+def scrape_events(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    events = []
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag["href"]
+        if href.startswith("/events/"):
+            event_info = {}
+
+            event_info["name"] = href
+            if "/events/" in event_info["name"]:
+                event_info["name"] = href.replace("/events/", "")
+
+            event_info["url"] = f"https://sportsurge.bz{href}"
+            p(f"FOUND EVENT: " + event_info["name"] + "    " + event_info["url"], colours.HEADER, otype.REGULAR)
+            # Get team names and images
+            teams = a_tag.find_all("img", alt=True)
+            if len(teams) == 2:
+                event_info["home_team"] = teams[0]["alt"]
+                event_info["home_team_img"] = teams[0]["src"]
+                event_info["away_team"] = teams[1]["alt"]
+                event_info["away_team_img"] = teams[1]["src"]
+            events.append(event_info)
+    return events

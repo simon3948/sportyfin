@@ -1,7 +1,8 @@
 NBA = "nba"
 NHL = "nhl"
 NFL = "nfl"
-EF = "English Football"
+EF = "ef"
+F1 = "f1"
 
 
 class LeagueColours:

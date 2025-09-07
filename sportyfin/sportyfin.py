@@ -7,10 +7,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+FOOTBALL = "football"
+F1 = "f1"
+NFL = "nfl"
 NBA = "nba"
 NHL = "nhl"
-NFL = "nfl"
-EF = "English Football"
+UFC = "ufc"
+BOXING = "boxing"
+RUGBY = "rugby"
+
 leagues = []
 OUTPUT = os.path.join(os.getcwd(), "output")
 os.environ['output'] = OUTPUT
@@ -39,14 +44,19 @@ def header():
     print()
 
 
+
 # Main class
 class StreamCollector:
     def __init__(self):
         self.streaming_sites = {
+            FOOTBALL: scraping.find_streams(FOOTBALL) if FOOTBALL in leagues else [],
+            F1: scraping.find_streams(F1) if F1 in leagues else [],
+            NFL: scraping.find_streams(NFL) if NFL in leagues else [],
             NBA: scraping.find_streams(NBA) if NBA in leagues else [],
             NHL: scraping.find_streams(NHL) if NHL in leagues else [],
-            NFL: scraping.find_streams(NFL) if NFL in leagues else [],
-            EF: scraping.find_streams(EF) if EF in leagues else [],
+            UFC: scraping.find_streams(UFC) if UFC in leagues else [],
+            BOXING: scraping.find_streams(BOXING) if BOXING in leagues else [],
+            RUGBY: scraping.find_streams(RUGBY) if RUGBY in leagues else [],
         }
         self.leagues: list = leagues
 
@@ -55,28 +65,29 @@ class StreamCollector:
         for lg in self.leagues:
             p(f"COLLECTING {lg.upper()} .M3U8 LINKS", colours.HEADER, otype.REGULAR)
             res = 0
-            for match in self.streaming_sites[lg]:
-                p(f"Looking for {match['match']['name']} streams:", colours.WARNING, otype.REGULAR)
-                match['match']['m3u8_urls'] = scraping.get_streams(match['match']['url'])
-                res += len(match['match']['m3u8_urls'])
+            for event in self.streaming_sites[lg]:
+                # Use direct keys from event dictionary
+                p(f"Looking for {event.get('name', event.get('url', 'Unknown'))} streams:", colours.WARNING, otype.REGULAR)
+                event['m3u8_urls'] = scraping.get_streams(event['stream_links'])
+                res += len(event['m3u8_urls'])
             if res == 0:
                 p(f"COULD NOT FIND {lg.upper()} M3U8 LINKS", colours.FAIL, otype.REGULAR)
 
     def generate_xmltv(self, lg: str):
         root = ET.Element("tv")
-        for match in self.streaming_sites[lg]:
-            for url in match['match']['m3u8_urls']:
+        for event in self.streaming_sites[lg]:
+            for url in event['m3u8_urls']:
                 doc = ET.SubElement(root, "channel", id=str(url))
-                ET.SubElement(doc, "display-name").text = match['match']['name']
-                ET.SubElement(doc, "icon").text = f"{OUTPUT}/{lg}/{match['match']['img_location'].split('/')[-1]}"
+                ET.SubElement(doc, "display-name").text = event.get('name', event.get('url', 'Unknown'))
+                ET.SubElement(doc, "icon").text = f"{OUTPUT}/{lg}/{event.get('img_location', '').split('/')[-1]}"
 
-                doc_p = ET.SubElement(root, "programme", start=match['match']['start'], stop=match['match']['stop'], channel=str(url))
-                ET.SubElement(doc_p, "title", lang="en").text = match['match']['name']
+                doc_p = ET.SubElement(root, "programme", start=event.get('start', ''), stop=event.get('stop', ''), channel=str(url))
+                ET.SubElement(doc_p, "title", lang="en").text = event.get('name', event.get('url', 'Unknown'))
                 ET.SubElement(doc_p, "category", lang="en").text = "sports"
                 audio = ET.Element("audio")
                 doc_p.append(audio)
                 ET.SubElement(audio, "stereo").text = "stereo"
-                ET.SubElement(doc_p, "icon", src=f"{OUTPUT}/{lg}/{match['match']['img_location'].split('/')[-1]}")
+                ET.SubElement(doc_p, "icon", src=f"{OUTPUT}/{lg}/{event.get('img_location', '').split('/')[-1]}")
         tree = ET.ElementTree(root)
         outp = os.path.join(OUTPUT, f"docs")
         if not os.path.isdir(f"{OUTPUT}"):
@@ -90,9 +101,9 @@ class StreamCollector:
     def generate_m3u(self, lg: str):
         with open(os.path.join(*[OUTPUT, "docs", f"{lg}.m3u"]), 'w') as file:
             file.write("#EXTM3U\n")
-            for match in self.streaming_sites[lg]:
-                for url in match['match']['m3u8_urls']:
-                    file.write(f"""#EXTINF:-1 tvg-id="{url}" tvg-country="USA" tvg-language="English" tvg-logo="{os.path.join(*[OUTPUT, lg, match['match']['img_location'].split('/')[-1]])}" group-title="{lg}",{match['match']['name']}\n""")
+            for event in self.streaming_sites[lg]:
+                for url in event['m3u8_urls']:
+                    file.write(f"""#EXTINF:-1 tvg-id="{url}" tvg-country="USA" tvg-language="English" tvg-logo="{os.path.join(*[OUTPUT, lg, event.get('img_location', '').split('/')[-1]])}" group-title="{lg}",{event.get('name', event.get('url', 'Unknown'))}\n""")
                     file.write(f"""{url}\n""")
 
     def generate_docs(self):
@@ -120,21 +131,33 @@ def run(argv: list):
             os.environ["selenium"] = "0"
         else:
             os.environ["selenium"] = "1"
+        if "-football" in argv:
+            leagues.append(FOOTBALL)
+        if "-f1" in argv:
+            leagues.append(F1)
+        if "-nfl" in argv:
+            leagues.append(NFL)
         if "-nba" in argv:
             leagues.append(NBA)
         if "-nhl" in argv:
             leagues.append(NHL)
-        if "-nfl" in argv:
-            leagues.append(NFL)
-        if "-ef" in argv:
-            leagues.append(EF)
+        if "-ufc" in argv:
+            leagues.append(UFC)
+        if "-boxing" in argv:
+            leagues.append(BOXING)
+        if "-rugby" in argv:
+            leagues.append(RUGBY)
         if "-a" in argv and len(leagues) == 0:
+            leagues.append(FOOTBALL)
+            leagues.append(F1)
+            leagues.append(NFL)
             leagues.append(NBA)
             leagues.append(NHL)
-            leagues.append(NFL)
-            leagues.append(EF)
+            leagues.append(UFC)
+            leagues.append(BOXING)
+            leagues.append(RUGBY)
         elif "-a" in argv and len(leagues) != 0:
-            p("Cannot pass -a with -nba/-nfl/-nhl/-ef", colours.FAIL, otype.ERROR)
+            p("Cannot pass -a with -football/-f1/-nfl/-nba/-nhl/-ufc/-boxing/-rugby", colours.FAIL, otype.ERROR)
             sys.exit()
         if "-t" in argv:
             try:
